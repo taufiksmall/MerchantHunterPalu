@@ -1,0 +1,471 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Monitoring Serbu Top Merchant - Area Palu</title>
+
+    <!-- Load Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+
+    <style>
+        /* =========================================
+           CSS RESET & VARIABLES
+           ========================================= */
+        :root {
+            --primary-blue: #0f4c81;
+            --bg-color: #f8f9fa;
+            --text-main: #333;
+            --text-muted: #6c757d;
+            --c-terakuisisi: #1565c0; /* Biru  */
+            --c-none:        #9e9e9e; /* Abu   */
+            --c-deal:        #f57c00; /* Oranye*/
+            --c-menolak:     #d32f2f; /* Merah */
+        }
+        * { box-sizing: border-box; }
+        body, html { margin: 0; padding: 0; height: 100%; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: var(--bg-color); }
+
+        /* RESPONSIVE LAYOUT */
+        .container {
+            display: flex;
+            flex-direction: row; /* Desktop: Kiri-Kanan */
+            height: 100vh;
+            width: 100%;
+        }
+        .sidebar {
+            width: 360px;
+            background: #fff;
+            display: flex;
+            flex-direction: column;
+            border-right: 1px solid #e0e0e0;
+            box-shadow: 2px 0 5px rgba(0,0,0,0.05);
+            z-index: 10;
+        }
+        .map-area { flex-grow: 1; position: relative; }
+        #map { width: 100%; height: 100%; z-index: 1; }
+
+        /* HEADER SIDEBAR */
+        .sidebar-header { padding: 14px 18px; background: var(--primary-blue); color: white; }
+        .sidebar-header h2 { margin: 0; font-size: 17px; }
+        .sidebar-header .sub { font-size: 12px; opacity: .85; margin-top: 2px; }
+        .filter-box, .search-box {
+            margin-top: 8px; width: 100%; padding: 8px; border-radius: 6px; border: none; font-size: 13px;
+        }
+        .filter-row { display: flex; gap: 8px; margin-top: 8px; }
+        .filter-row select { flex: 1; padding: 8px; border-radius: 6px; border: none; font-size: 13px; }
+
+        /* STATS BAR */
+        .stats-bar { display: flex; gap: 6px; padding: 8px 18px; background: #fff; border-bottom: 1px solid #eee; }
+        .stat-pill { flex: 1; text-align: center; border-radius: 8px; padding: 6px 4px; }
+        .stat-pill .n { font-size: 18px; font-weight: 700; line-height: 1; }
+        .stat-pill .l { font-size: 10px; text-transform: uppercase; letter-spacing: .3px; }
+        .stat-total { background: #eef2f7; color: var(--primary-blue); }
+        .stat-akui  { background: #e3f0fb; color: var(--c-terakuisisi); }
+        .stat-none  { background: #f3f3f3; color: #616161; }
+
+        /* LIST MERCHANT */
+        .merchant-list { flex-grow: 1; overflow-y: auto; padding: 10px; }
+        .list-empty { text-align: center; color: var(--text-muted); padding: 30px 10px; font-size: 13px; }
+
+        /* CARD MERCHANT UX */
+        .merchant-card {
+            background: #fff; padding: 13px 14px; margin-bottom: 9px; border-radius: 8px;
+            border: 1px solid #eee; border-left: 4px solid var(--c-none);
+            box-shadow: 0 2px 4px rgba(0,0,0,0.02); cursor: pointer; transition: all 0.18s;
+        }
+        .merchant-card:hover { border-color: var(--primary-blue); transform: translateY(-2px); box-shadow: 0 4px 10px rgba(0,0,0,0.07); }
+        .merchant-card.is-terakuisisi { border-left-color: var(--c-terakuisisi); }
+        .merchant-card.is-deal        { border-left-color: var(--c-deal); }
+        .merchant-card.is-menolak     { border-left-color: var(--c-menolak); }
+        .merchant-title { font-size: 15px; font-weight: bold; color: var(--text-main); margin-bottom: 3px; }
+        .merchant-rating { font-size: 12.5px; color: #ff9800; font-weight: bold; margin-bottom: 3px; }
+        .merchant-address { font-size: 12px; color: var(--text-muted); line-height: 1.4; margin-bottom: 8px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+        .badge-container { display: flex; gap: 5px; flex-wrap: wrap; align-items: center; }
+        .badge { font-size: 11px; padding: 3px 8px; border-radius: 12px; font-weight: bold; }
+        .badge-lob { background: #e3f2fd; color: #1976d2; }
+        .badge-cabang { background: #f1f3f4; color: #555; }
+        .badge-status { color: #fff; }
+        .st-TERAKUISISI { background: var(--c-terakuisisi); }
+        .st-NONE { background: var(--c-none); }
+        .st-DEAL { background: var(--c-deal); }
+        .st-MENOLAK { background: var(--c-menolak); }
+
+        /* MODAL UX */
+        .modal-overlay {
+            display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.6); z-index: 2000;
+            justify-content: center; align-items: center; padding: 15px;
+        }
+        .modal-box { background: #fff; padding: 22px; width: 100%; max-width: 420px; border-radius: 12px; box-shadow: 0 10px 25px rgba(0,0,0,0.2); }
+        .modal-box h3 { margin: 0 0 14px; color: var(--primary-blue); }
+        .form-group { margin-bottom: 12px; }
+        .form-group label { display: block; margin-bottom: 5px; font-size: 13px; font-weight: bold; color: var(--text-main); }
+        .form-group input, .form-group select, .form-group textarea {
+            width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 6px; font-family: inherit; font-size: 14px;
+        }
+        .form-group input[readonly] { background: #f5f5f5; color: #555; }
+        .hint { font-size: 11px; color: var(--text-muted); margin-top: 4px; }
+        .action-btns { text-align: right; margin-top: 18px; }
+        .btn { padding: 10px 16px; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 14px; }
+        .btn-cancel { background: #f1f3f4; color: #333; margin-right: 8px; }
+        .btn-submit { background: var(--primary-blue); color: white; }
+        .btn-submit:disabled { opacity: .6; cursor: not-allowed; }
+
+        /* TOAST + LOADER */
+        #toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: #323232; color: #fff; padding: 12px 20px; border-radius: 8px; font-size: 13px; z-index: 3000; opacity: 0; transition: opacity .3s; pointer-events: none; max-width: 90%; text-align: center; }
+        #toast.show { opacity: 1; }
+        #toast.err { background: #c0392b; }
+        #toast.ok  { background: #2e7d32; }
+        .loader-overlay { position: absolute; inset: 0; background: rgba(255,255,255,.85); display: flex; align-items: center; justify-content: center; z-index: 500; font-size: 14px; color: var(--primary-blue); }
+        .spin { width: 18px; height: 18px; border: 3px solid #ccd; border-top-color: var(--primary-blue); border-radius: 50%; display: inline-block; margin-right: 8px; animation: rot 0.8s linear infinite; vertical-align: middle; }
+        @keyframes rot { to { transform: rotate(360deg); } }
+
+        /* Leaflet pin marker (divIcon) */
+        .pin-wrap { position: relative; }
+        .pin-wrap svg { display: block; filter: drop-shadow(0 1px 2px rgba(0,0,0,.4)); }
+
+        /* MOBILE (HP) */
+        @media (max-width: 768px) {
+            .container { flex-direction: column-reverse; } /* Peta di atas, list di bawah */
+            .sidebar { width: 100%; height: 55vh; border-right: none; border-top: 2px solid #ccc; }
+            .map-area { width: 100%; height: 45vh; }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+
+        <!-- ============ SIDEBAR (List Data) ============ -->
+        <div class="sidebar">
+            <div class="sidebar-header">
+                <h2>Target Serbuan Palu</h2>
+                <div class="sub">Monitoring Akuisisi EDC / QRIS / Livin' Merchant</div>
+                <input type="text" class="search-box" id="searchBox" placeholder="🔍 Cari nama merchant / alamat...">
+                <div class="filter-row">
+                    <select class="filter-box" id="filterCabang"><option value="all">Semua Cabang</option></select>
+                    <select class="filter-box" id="filterStatus">
+                        <option value="all">Semua Status</option>
+                        <option value="TERAKUISISI">Terakuisisi</option>
+                        <option value="DEAL">Deal (On Progress)</option>
+                        <option value="MENOLAK">Menolak</option>
+                        <option value="NONE">Belum (None)</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="stats-bar">
+                <div class="stat-pill stat-total"><div class="n" id="stTotal">0</div><div class="l">Total</div></div>
+                <div class="stat-pill stat-akui"><div class="n" id="stAkui">0</div><div class="l">Terakuisisi</div></div>
+                <div class="stat-pill stat-none"><div class="n" id="stNone">0</div><div class="l">Belum</div></div>
+            </div>
+
+            <div class="merchant-list" id="merchantList">
+                <div class="list-empty"><span class="spin"></span>Memuat data merchant...</div>
+            </div>
+        </div>
+
+        <!-- ============ MAP AREA ============ -->
+        <div class="map-area">
+            <div id="map"></div>
+            <div class="loader-overlay" id="mapLoader"><span class="spin"></span>Memuat peta...</div>
+
+            <!-- POP UP FORM LAPORAN (MODAL) -->
+            <div class="modal-overlay" id="laporanModal">
+                <div class="modal-box">
+                    <h3>Update Progres Akuisisi</h3>
+                    <form id="formLaporan" onsubmit="return false;">
+                        <div class="form-group">
+                            <label>Nama Merchant</label>
+                            <input type="text" id="inputMerchantName" readonly>
+                        </div>
+                        <div class="form-group">
+                            <label>Status Akuisisi</label>
+                            <select id="inputStatus">
+                                <option value="DEAL (ON PROGRESS COLLECT DOKUMEN)">DEAL (ON PROGRESS COLLECT DOKUMEN)</option>
+                                <option value="TERAKUISISI">TERAKUISISI</option>
+                                <option value="MENOLAK">MENOLAK</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Catatan Sales</label>
+                            <textarea id="inputCatatan" rows="3" placeholder="Masukkan laporan singkat (Bahasa Indonesia)..."></textarea>
+                            <div class="hint">Catatan akan otomatis diterjemahkan ke Bahasa Inggris oleh sistem saat disimpan.</div>
+                        </div>
+                        <div class="form-group">
+                            <label>Nama Sales / Pelapor</label>
+                            <input type="text" id="inputSales" placeholder="Opsional">
+                        </div>
+                        <div class="action-btns">
+                            <button type="button" class="btn btn-cancel" onclick="closeModal()">Batal</button>
+                            <button type="button" class="btn btn-submit" id="btnSubmit" onclick="submitData()">Simpan Data</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="toast"></div>
+
+    <!-- Load Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+    /* =====================================================================
+       KONFIGURASI  —  isi WEB_APP_URL setelah deploy Google Apps Script.
+       Kosongkan ('') untuk mode demo: data dibaca dari file data.json lokal.
+       ===================================================================== */
+    const WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbxcGs5th6M5z43UTwzJhPImbAXLCwR2r4scWUy7VzMbAb17gHpKrSpwJyF2zpRx_fSskg/exec'; // <-- TEMPEL URL Web App Apps Script di sini
+
+    // Peta kode cabang -> nama (Area Palu, Region X)
+    const CABANG = {
+        '15100':'KC Palu Sam Ratulangi','15101':'KCP Palu Imam Bonjol','15102':'KCP Palu Hasanuddin',
+        '15103':'KCP Donggala','15104':'KC Luwuk','15105':'KCP Poso','15106':'KC Toli Toli',
+        '15107':'KCP Parigi','15109':'KCP Ampana','15110':'KCP Palu Basuki Rahmat',
+        '15111':'KCP Morowali Bahodopi','15112':'KCP Tawaeli','15175':'KCP Pasangkayu','15177':'KCP Toili',
+        '15178':'KCP Palu Moh Yamin','15179':'KCP Palu Dewi Sartika','15180':'KCP Tentena','15181':'KCP Kotaraya',
+        '15182':'KCP Buol','15184':'KCP Parigi Tolai','15185':'KCP Banggai Bunta','15186':'KCP Banggai Laut',
+        '15187':'KCP Morowali Beteleme','15188':'KCP Toli Toli Soni','15189':'KCP Morowali Bungku',
+        '15190':'KCP Banggai Kepulauan','15191':'KCP Sigi'
+    };
+
+    // Warna marker per status
+    const STATUS_COLOR = {
+        'TERAKUISISI':'#1565c0', 'NONE':'#9e9e9e',
+        'DEAL':'#f57c00', 'DEAL (ON PROGRESS COLLECT DOKUMEN)':'#f57c00',
+        'MENOLAK':'#d32f2f', '':'#9e9e9e'
+    };
+
+    let MERCHANTS = [];           // semua data
+    let markersById = {};         // index -> L.marker
+    let map, markerLayer;
+
+    /* ---------- INIT PETA ---------- */
+    function initMap() {
+        map = L.map('map', { zoomControl: true }).setView([-0.8930, 119.8729], 12);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 19, attribution: '&copy; OpenStreetMap'
+        }).addTo(map);
+        markerLayer = L.layerGroup().addTo(map);
+    }
+
+    /* ---------- IKON PIN BERWARNA (divIcon SVG, tanpa file eksternal) ---------- */
+    function pinIcon(color) {
+        const svg =
+            '<div class="pin-wrap"><svg width="26" height="38" viewBox="0 0 26 38" xmlns="http://www.w3.org/2000/svg">' +
+            '<path d="M13 0C5.8 0 0 5.8 0 13c0 9.2 13 25 13 25s13-15.8 13-25C26 5.8 20.2 0 13 0z" fill="'+color+'"/>' +
+            '<circle cx="13" cy="13" r="5" fill="#fff"/></svg></div>';
+        return L.divIcon({ html: svg, className: '', iconSize: [26,38], iconAnchor: [13,38], popupAnchor: [0,-34] });
+    }
+
+    function statusColor(st) {
+        const k = (st || 'NONE').toUpperCase();
+        return STATUS_COLOR[k] || STATUS_COLOR[st] || '#9e9e9e';
+    }
+    function statusClass(st) {
+        const k = (st || 'NONE').toUpperCase();
+        if (k.startsWith('DEAL')) return 'DEAL';
+        if (k === 'TERAKUISISI') return 'TERAKUISISI';
+        if (k === 'MENOLAK') return 'MENOLAK';
+        return 'NONE';
+    }
+    function escapeHtml(s){ return String(s==null?'':s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+    function fmtNum(n){ return (Number(n)||0).toLocaleString('id-ID'); }
+
+    /* ---------- AMBIL DATA (live dari Sheets, atau fallback data.json) ---------- */
+    async function loadData() {
+        try {
+            let json;
+            if (WEB_APP_URL) {
+                const res = await fetch(WEB_APP_URL + '?action=read', { method: 'GET' });
+                json = await res.json();
+                MERCHANTS = json.data || json;
+            } else {
+                const res = await fetch('data.json');
+                MERCHANTS = await res.json();
+            }
+            // beri id stabil
+            MERCHANTS.forEach((m,i)=> m._id = i);
+            buildCabangFilter();
+            render();
+            document.getElementById('mapLoader').style.display = 'none';
+        } catch (e) {
+            console.error(e);
+            document.getElementById('mapLoader').style.display = 'none';
+            document.getElementById('merchantList').innerHTML =
+                '<div class="list-empty">Gagal memuat data.<br>' +
+                (WEB_APP_URL ? 'Cek koneksi / URL Web App.' : 'Pastikan file <b>data.json</b> berada di folder yang sama dengan index.html, dan dibuka via server (bukan double-click file://).') +
+                '</div>';
+        }
+    }
+
+    /* ---------- FILTER CABANG ---------- */
+    function buildCabangFilter() {
+        const sel = document.getElementById('filterCabang');
+        const codes = [...new Set(MERCHANTS.map(m=>String(m.kodeCabang||'')).filter(c=>c && c!=='None'))].sort();
+        codes.forEach(c=>{
+            const o = document.createElement('option');
+            o.value = c; o.textContent = c + (CABANG[c] ? ' - ' + CABANG[c] : '');
+            sel.appendChild(o);
+        });
+    }
+
+    /* ---------- RENDER LIST + MARKER (looping dinamis) ---------- */
+    function render() {
+        const q = document.getElementById('searchBox').value.trim().toLowerCase();
+        const fCab = document.getElementById('filterCabang').value;
+        const fStat = document.getElementById('filterStatus').value;
+
+        const filtered = MERCHANTS.filter(m=>{
+            const stClass = statusClass(m.statusAkuisisi);
+            if (fStat !== 'all' && stClass !== fStat) return false;
+            if (fCab !== 'all' && String(m.kodeCabang||'') !== fCab) return false;
+            if (q) {
+                const hay = (m.nama + ' ' + (m.alamat||'')).toLowerCase();
+                if (!hay.includes(q)) return false;
+            }
+            return true;
+        });
+
+        // --- statistik ---
+        document.getElementById('stTotal').textContent = filtered.length;
+        document.getElementById('stAkui').textContent = filtered.filter(m=>statusClass(m.statusAkuisisi)==='TERAKUISISI').length;
+        document.getElementById('stNone').textContent = filtered.filter(m=>statusClass(m.statusAkuisisi)==='NONE').length;
+
+        // --- render sidebar ---
+        const list = document.getElementById('merchantList');
+        if (!filtered.length) { list.innerHTML = '<div class="list-empty">Tidak ada merchant yang cocok dengan filter.</div>'; }
+        else {
+            list.innerHTML = filtered.map(m=>{
+                const cls = statusClass(m.statusAkuisisi);
+                const cab = m.kodeCabang && m.kodeCabang!=='None' ? '<span class="badge badge-cabang">'+escapeHtml(m.kodeCabang)+'</span>' : '';
+                return ''+
+                '<div class="merchant-card is-'+cls.toLowerCase()+'" onclick="focusMerchant('+m._id+')">'+
+                  '<div class="merchant-title">'+escapeHtml(m.nama)+'</div>'+
+                  (m.rating ? '<div class="merchant-rating">⭐ '+m.rating+' ('+fmtNum(m.jumlahRating)+' ulasan)</div>' : '')+
+                  '<div class="merchant-address">'+escapeHtml(m.alamat)+'</div>'+
+                  '<div class="badge-container">'+
+                    '<span class="badge badge-lob">'+escapeHtml(m.lob||'Lainnya')+'</span>'+ cab +
+                    '<span class="badge badge-status st-'+cls+'">'+escapeHtml((m.statusAkuisisi||'NONE').toUpperCase()==='NONE'?'NONE':m.statusAkuisisi)+'</span>'+
+                  '</div>'+
+                '</div>';
+            }).join('');
+        }
+
+        // --- render marker ---
+        markerLayer.clearLayers();
+        markersById = {};
+        filtered.forEach(m=>{
+            if (typeof m.lat !== 'number' || typeof m.lng !== 'number') return;
+            const mk = L.marker([m.lat, m.lng], { icon: pinIcon(statusColor(m.statusAkuisisi)) });
+            mk.bindPopup(popupHtml(m));
+            mk.addTo(markerLayer);
+            markersById[m._id] = mk;
+        });
+    }
+
+    function popupHtml(m) {
+        const maps = m.maps ? '<a href="'+escapeHtml(m.maps)+'" target="_blank" style="display:block;margin:6px 0;color:#0f4c81;font-weight:bold;">📍 Buka di Google Maps</a>' : '';
+        const note = m.catatanID ? '<div style="font-size:12px;color:#555;margin-top:4px;"><i>'+escapeHtml(m.catatanID)+'</i></div>' : '';
+        return ''+
+            '<div style="min-width:200px;">'+
+            '<b>'+escapeHtml(m.nama)+'</b><br>'+
+            '<span style="color:'+statusColor(m.statusAkuisisi)+';font-weight:bold;">'+escapeHtml((m.statusAkuisisi||'NONE'))+'</span>'+
+            (m.kodeCabang && m.kodeCabang!=='None' ? '<br><small>Cabang: '+escapeHtml(m.kodeCabang)+(CABANG[m.kodeCabang]?' - '+CABANG[m.kodeCabang]:'')+'</small>' : '')+
+            note + maps +
+            '<button class="btn btn-submit" style="width:100%;padding:6px;margin-top:6px;" onclick="openModal('+m._id+')">Update Progres</button>'+
+            '</div>';
+    }
+
+    /* ---------- INTERAKSI ---------- */
+    function focusMerchant(id) {
+        const m = MERCHANTS.find(x=>x._id===id);
+        if (!m) return;
+        map.setView([m.lat, m.lng], 17);
+        const mk = markersById[id];
+        if (mk) mk.openPopup();
+    }
+
+    function openModal(id) {
+        const m = MERCHANTS.find(x=>x._id===id);
+        if (!m) return;
+        document.getElementById('inputMerchantName').value = m.nama;
+        document.getElementById('inputMerchantName').dataset.id = id;
+        // preselect status saat ini jika cocok
+        const sel = document.getElementById('inputStatus');
+        const cur = (m.statusAkuisisi||'').toUpperCase();
+        sel.value = [...sel.options].some(o=>o.value===m.statusAkuisisi) ? m.statusAkuisisi
+                  : (cur==='TERAKUISISI' ? 'TERAKUISISI' : 'DEAL (ON PROGRESS COLLECT DOKUMEN)');
+        document.getElementById('inputCatatan').value = '';
+        document.getElementById('laporanModal').style.display = 'flex';
+    }
+    function closeModal() { document.getElementById('laporanModal').style.display = 'none'; }
+
+    function toast(msg, type) {
+        const t = document.getElementById('toast');
+        t.textContent = msg; t.className = 'show ' + (type||'');
+        setTimeout(()=>{ t.className = (type||''); }, 3200);
+    }
+
+    /* ---------- SUBMIT KE GOOGLE SHEETS (via Apps Script) ---------- */
+    async function submitData() {
+        const id = parseInt(document.getElementById('inputMerchantName').dataset.id, 10);
+        const m = MERCHANTS.find(x=>x._id===id);
+        const payload = {
+            action: 'update',
+            nama: document.getElementById('inputMerchantName').value,
+            status: document.getElementById('inputStatus').value,
+            catatan: document.getElementById('inputCatatan').value.trim(),
+            sales: document.getElementById('inputSales').value.trim(),
+            lat: m ? m.lat : '', lng: m ? m.lng : ''
+        };
+        const btn = document.getElementById('btnSubmit');
+
+        if (!WEB_APP_URL) {
+            // Mode demo: update lokal saja
+            if (m) { m.statusAkuisisi = payload.status; m.catatanID = payload.catatan; }
+            render(); closeModal();
+            toast('Mode demo: data diperbarui di tampilan saja (WEB_APP_URL belum diisi).', 'err');
+            return;
+        }
+
+        btn.disabled = true; btn.textContent = 'Menyimpan...';
+        try {
+            // text/plain => menghindari CORS preflight pada Apps Script
+            const res = await fetch(WEB_APP_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                body: JSON.stringify(payload)
+            });
+            const out = await res.json();
+            if (out.status === 'success') {
+                if (m) {
+                    m.statusAkuisisi = payload.status;
+                    m.catatanID = payload.catatan;
+                    m.catatanEN = out.catatanEN || '';
+                    m.updatedBy = payload.sales;
+                }
+                render(); closeModal();
+                toast('Tersimpan ke Google Sheets ✓' + (out.catatanEN ? ' (EN: '+out.catatanEN+')' : ''), 'ok');
+            } else {
+                throw new Error(out.message || 'Gagal');
+            }
+        } catch (e) {
+            console.error(e);
+            toast('Gagal menyimpan: ' + e.message, 'err');
+        } finally {
+            btn.disabled = false; btn.textContent = 'Simpan Data';
+        }
+    }
+
+    /* ---------- EVENTS ---------- */
+    document.getElementById('searchBox').addEventListener('input', render);
+    document.getElementById('filterCabang').addEventListener('change', render);
+    document.getElementById('filterStatus').addEventListener('change', render);
+
+    /* ---------- START ---------- */
+    initMap();
+    loadData();
+    </script>
+</body>
+</html>
